@@ -79,7 +79,6 @@ class BackyardFlyer(Drone):
                 if self.armed:  # check arming worked
                     self.takeoff_transition()
             elif self.flight_state == States.DISARMING:
-                # if not self.armed and not self.guided:  # guided==> autonomously controlled
                 self.manual_transition()
 
     def calculate_box(self):
@@ -151,7 +150,6 @@ class BackyardFlyer(Drone):
         """
         print("disarm transition")
         self.disarm()
-        self.release_control()  # Take control of the drone
         self.flight_state = States.DISARMING
 
     def manual_transition(self):
@@ -164,7 +162,7 @@ class BackyardFlyer(Drone):
         """
         print("manual transition")
 
-        self.release_control()
+        self.release_control()  # Take control of the drone
         self.stop()
         self.in_mission = False
         self.flight_state = States.MANUAL
