@@ -41,7 +41,19 @@ class BackyardFlyer(Drone):
 
         This triggers when `MsgID.LOCAL_POSITION` is received and self.local_position contains new data
         """
-
+        if self.flight_state == States.TAKEOFF:
+            # coordinate conversion
+            # altitude = -1.0 * self.local_position[2]
+            if -1.0 * self.local_position[2] > 0.95 * self.target_position[2]:
+                self.all_waypoints = self.calculate_box()
+                self.waypoint_transition()
+        elif self.flight_state == States.WAYPOINT:
+            if np.linalg.norm(self.target_position[0:2] - self.local_position[0:2]) < 1.0:
+                if len(self.all_waypoints) > 0:
+                    self.waypoint_transition()
+                else:
+                    if np.linalg.norm(self.local_velocity[0:2]) < 1.0:
+                        self.landing_transition()
 
     def velocity_callback(self):
         """
@@ -49,7 +61,10 @@ class BackyardFlyer(Drone):
 
         This triggers when `MsgID.LOCAL_VELOCITY` is received and self.local_velocity contains new data
         """
-        pass
+        if self.flight_state == States.LANDING:
+            if self.global_position[2] - self.global_home[2] < 0.1:
+                if abs(self.local_position[2]) < 0.01:
+                    self.disarming_transition()
 
     def state_callback(self):
         """
@@ -57,18 +72,31 @@ class BackyardFlyer(Drone):
 
         This triggers when `MsgID.STATE` is received and self.armed and self.guided contain new data
         """
-        pass
+        if self.in_mission:
+            if self.flight_state == States.MANUAL:
+                self.arming_transition()
+            elif self.flight_state == States.ARMING:
+                if self.armed:  # check arming worked
+                    self.takeoff_transition()
+            elif self.flight_state == States.DISARMING:
+                # if not self.armed and not self.guided:  # guided==> autonomously controlled
+                self.manual_transition()
 
     def calculate_box(self):
         """TODO: Fill out this method
-        
+
         1. Return waypoints to fly a box
         """
-        pass
+        box_waypoints = [
+            [4.0, 0.0, 3.0],
+            [4.0, 4.0, 3.0],
+            [0.0, 4.0, 3.0],
+            [0.0, 0.0, 3.0]]
+        return box_waypoints
 
     def arming_transition(self):
         """TODO: Fill out this method
-        
+
         1. Take control of the drone
         2. Pass an arming command
         3. Set the home location to current position
@@ -80,10 +108,9 @@ class BackyardFlyer(Drone):
         self.set_home_position(self.global_position[0], self.global_position[1], self.global_position[2])
         self.flight_state = States.ARMING
 
-
     def takeoff_transition(self):
         """TODO: Fill out this method
-        
+
         1. Set target_position altitude to 3.0m
         2. Command a takeoff to 3.0m
         3. Transition to the TAKEOFF state
@@ -96,15 +123,19 @@ class BackyardFlyer(Drone):
 
     def waypoint_transition(self):
         """TODO: Fill out this method
-    
+
         1. Command the next waypoint position
         2. Transition to WAYPOINT state
         """
         print("waypoint transition")
+        self.target_position = self.all_waypoints.pop(0)
+        print('moving to target position {}'.format(self.target_position))
+        self.cmd_position(self.target_position[0], self.target_position[1], self.target_position[2], 0.0)
+        self.flight_state = States.WAYPOINT
 
     def landing_transition(self):
         """TODO: Fill out this method
-        
+
         1. Command the drone to land
         2. Transition to the LANDING state
         """
@@ -114,17 +145,18 @@ class BackyardFlyer(Drone):
 
     def disarming_transition(self):
         """TODO: Fill out this method
-        
+
         1. Command the drone to disarm
         2. Transition to the DISARMING state
         """
         print("disarm transition")
         self.disarm()
+        self.release_control()  # Take control of the drone
         self.flight_state = States.DISARMING
 
     def manual_transition(self):
         """This method is provided
-        
+
         1. Release control of the drone
         2. Stop the connection (and telemetry log)
         3. End the mission
@@ -139,7 +171,7 @@ class BackyardFlyer(Drone):
 
     def start(self):
         """This method is provided
-        
+
         1. Open a log file
         2. Start the drone connection
         3. Close the log file
@@ -147,7 +179,8 @@ class BackyardFlyer(Drone):
         print("Creating log file")
         self.start_log("Logs", "NavLog.txt")
         print("starting connection")
-        self.connection.start()
+        # self.connection.start()
+        super().start()
         print("Closing log file")
         self.stop_log()
 
@@ -159,7 +192,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     conn = MavlinkConnection('tcp:{0}:{1}'.format(args.host, args.port), threaded=False, PX4=False)
-    #conn = WebSocketConnection('ws://{0}:{1}'.format(args.host, args.port))
+    # conn = WebSocketConnection('ws://{0}:{1}'.format(args.host, args.port))
     drone = BackyardFlyer(conn)
     time.sleep(2)
     drone.start()
